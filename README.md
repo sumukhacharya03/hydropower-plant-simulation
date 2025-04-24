@@ -39,7 +39,7 @@ The simulation demonstrates the key components of hydroelectric power generation
 git clone https://github.com/sumukhacharya03/hydropower-plant-simulation.git
 
 # Navigate to the project directory
-cd hydropower-simulation
+cd hydropower-plant-simulation
 
 # Open the simulation in a browser
 open index.html
