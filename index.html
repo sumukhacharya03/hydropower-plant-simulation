@@ -3,113 +3,194 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hydropower Plant Simulation</title>
+    <title>Interactive Hydropower Plant Simulation</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f8ff;
         }
-        #info {
+        #info-panel {
             position: absolute;
-            top: 10px;
-            left: 10px;
+            top: 20px;
+            left: 20px;
             background: rgba(0, 0, 0, 0.7);
             color: white;
-            padding: 10px;
-            border-radius: 5px;
+            padding: 15px;
+            border-radius: 8px;
             z-index: 100;
+            max-width: 300px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
         }
-        #controls {
+        #controls-panel {
             position: absolute;
             bottom: 20px;
             left: 20px;
             background: rgba(0, 0, 0, 0.7);
             color: white;
-            padding: 15px;
-            border-radius: 5px;
+            padding: 20px;
+            border-radius: 8px;
             z-index: 100;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
         }
-        .slider-container {
+        .control-group {
             margin-bottom: 15px;
         }
         label {
             display: inline-block;
-            width: 120px;
+            width: 150px;
+            margin-bottom: 5px;
+            font-weight: bold;
         }
         input[type="range"] {
-            width: 200px;
-            vertical-align: middle;
+            width: 250px;
+            height: 8px;
+            border-radius: 4px;
+            background: #505050;
+            outline: none;
         }
         .value-display {
             display: inline-block;
-            width: 50px;
+            width: 60px;
             text-align: right;
             margin-left: 10px;
-        }
-        #powerOutput {
-            margin-top: 15px;
             font-weight: bold;
+        }
+        #power-display {
+            margin-top: 20px;
+            padding: 10px;
+            background: rgba(0, 100, 0, 0.3);
+            border-radius: 5px;
+            text-align: center;
+        }
+        #power-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #7cfc00;
+        }
+        h1, h2, h3 {
+            margin-top: 0;
+        }
+        .info-text {
+            line-height: 1.5;
+        }
+        .highlight {
+            color: #7cfc00;
+            font-weight: bold;
+        }
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 1000;
+        }
+        .progress-bar {
+            width: 300px;
+            height: 20px;
+            border: 2px solid white;
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #progress {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(to right, #0077be, #00bfff);
+            transition: width 0.3s;
         }
     </style>
 </head>
 <body>
-    <div id="info">
-        <h2>Hydropower Plant Simulation</h2>
-        <p>Use the controls to open and close the water gates.</p>
-        <p>When water flows, the turbine rotates and generates electricity.</p>
+    <div id="loading-screen">
+        <h2>Loading Hydropower Plant Simulation</h2>
+        <p>Please wait while we prepare the interactive experience...</p>
+        <div class="progress-bar">
+            <div id="progress"></div>
+        </div>
     </div>
+
+
     
-    <div id="controls">
-        <div class="slider-container">
-            <label for="gateControl">Gate Opening:</label>
-            <input type="range" id="gateControl" min="0" max="100" value="0">
-            <span class="value-display" id="gateValue">0%</span>
+    <div id="controls-panel">
+        <div class="control-group">
+            <label for="gate-control">Water Flow Control:</label>
+            <input type="range" id="gate-control" min="0" max="100" value="0">
+            <span class="value-display" id="gate-value">0%</span>
         </div>
-        <div class="slider-container">
-            <label for="cameraControl">Camera View:</label>
-            <input type="range" id="cameraControl" min="1" max="4" value="1" step="1">
-            <span class="value-display" id="viewValue">1</span>
+        <div class="control-group">
+            <label for="camera-control">Camera View:</label>
+            <input type="range" id="camera-control" min="1" max="4" value="1" step="1">
+            <span class="value-display" id="view-value">1</span>
         </div>
-        <div id="powerOutput">Power Output: 0 kW</div>
+        <div id="power-display">
+            <div>Current Power Output:</div>
+            <div id="power-value">0 kW</div>
+            <div id="efficiency">Efficiency: 0%</div>
+        </div>
     </div>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.7.1/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+
     <script>
-        // Main variables
-        let scene, camera, renderer, water, turbine, bulb, light;
-        let gateLeft, gateRight;
+        // Main simulation variables
+        let scene, camera, renderer, controls;
+        let water, turbine, generator, bulb, light;
+        let gateLeft, gateRight, waterSurface;
         let waterParticles = [];
         let waterfall;
         let turbineRotationSpeed = 0;
         let gateOpeningPercentage = 0;
         let previousTime = 0;
         let powerOutput = 0;
+        let efficiency = 0;
+        let loadingComplete = false;
         
-        // Camera positions
+        // Camera positions with descriptions
         const cameraPositions = [
-            { x: 0, y: 10, z: 30 }, // Overview
-            { x: -15, y: 8, z: 15 }, // Side view
-            { x: 0, y: 2, z: 10 },   // Turbine focus
-            { x: 0, y: 25, z: 5 }     // Top-down view
+            { x: 0, y: 15, z: 40, desc: "Overview" },
+            { x: -25, y: 10, z: 20, desc: "Side View" },
+            { x: 0, y: 2, z: 15, desc: "Turbine Close-up" },
+            { x: 0, y: 30, z: 5, desc: "Top-down View" }
         ];
         
-        // Initialize the scene
+        // Initialize the scene with loading progress
         function init() {
-            // Create scene
+            // Simulate loading progress
+            const loadingInterval = setInterval(() => {
+                const progress = document.getElementById('progress');
+                const currentWidth = parseInt(progress.style.width) || 0;
+                if (currentWidth < 100) {
+                    progress.style.width = (currentWidth + 10) + '%';
+                } else {
+                    clearInterval(loadingInterval);
+                    document.getElementById('loading-screen').style.display = 'none';
+                    loadingComplete = true;
+                }
+            }, 200);
+            
+            // Create scene with improved lighting
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87ceeb); // Sky blue background
-            scene.fog = new THREE.Fog(0x87ceeb, 50, 100); // Add fog for depth
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.002);
             
-            // Create camera
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 10, 30);
-            camera.lookAt(0, 0, 0);
+            // Create camera with orbit controls
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(cameraPositions[0].x, cameraPositions[0].y, cameraPositions[0].z);
             
-            // Create renderer
+            // Create renderer with enhanced settings
             renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -118,27 +199,17 @@
             renderer.toneMappingExposure = 1.2;
             document.body.appendChild(renderer.domElement);
             
-            // Create lights
-            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-            scene.add(ambientLight);
+            // Add orbit controls for manual camera movement
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI * 0.9;
+            controls.minDistance = 10;
+            controls.maxDistance = 100;
             
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
-            directionalLight.position.set(10, 20, 10);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
-            directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 100;
-            directionalLight.shadow.camera.left = -30;
-            directionalLight.shadow.camera.right = 30;
-            directionalLight.shadow.camera.top = 30;
-            directionalLight.shadow.camera.bottom = -30;
-            directionalLight.shadow.bias = -0.0001;
-            scene.add(directionalLight);
-            
-            // Add some hemisphere light for more realistic outdoor lighting
-            const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x228B22, 0.5);
-            scene.add(hemisphereLight);
+            // Setup lighting
+            setupLighting();
             
             // Create environment
             createEnvironment();
@@ -149,76 +220,91 @@
             // Create water reservoir
             createReservoir();
             
-            // Create gates
+            // Create control gates
             createGates();
             
-            // Create turbine house
+            // Create turbine house and generator
             createTurbineHouse();
             
-            // Create turbine
-            createTurbine();
+            // Create turbine and generator
+            createTurbineAndGenerator();
             
             // Create bulb and light
             createBulbAndLight();
             
-            // Create power lines
-            createPowerLines();
+            // Create power lines and transformer
+            createPowerInfrastructure();
             
-            // Create waterfall mesh (initially invisible)
+            // Create waterfall effect
             createWaterfall();
             
             // Add event listeners
-            window.addEventListener('resize', onWindowResize);
+            setupEventListeners();
             
-            // Add controls
-            document.getElementById('gateControl').addEventListener('input', function(e) {
-                gateOpeningPercentage = parseInt(e.target.value);
-                document.getElementById('gateValue').textContent = gateOpeningPercentage + '%';
-                updateGatePosition();
-            });
-            
-            document.getElementById('cameraControl').addEventListener('input', function(e) {
-                const viewIndex = parseInt(e.target.value) - 1;
-                document.getElementById('viewValue').textContent = e.target.value;
-                
-                gsap.to(camera.position, {
-                    x: cameraPositions[viewIndex].x,
-                    y: cameraPositions[viewIndex].y,
-                    z: cameraPositions[viewIndex].z,
-                    duration: 1.5,
-                    onUpdate: function() {
-                        camera.lookAt(0, 0, 0);
-                    }
-                });
-            });
-            
-            // Start animation
+            // Start animation loop
             animate();
         }
         
-        function createEnvironment() {
-            // Create ground with better texture
-            const groundSize = 200;
-            const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 32, 32);
+        function setupLighting() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
             
-            // Create a more interesting ground with height variations
+            // Directional light (sun)
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            sunLight.position.set(10, 20, 10);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 100;
+            sunLight.shadow.camera.left = -30;
+            sunLight.shadow.camera.right = 30;
+            sunLight.shadow.camera.top = 30;
+            sunLight.shadow.camera.bottom = -30;
+            sunLight.shadow.bias = -0.0001;
+            scene.add(sunLight);
+            
+            // Hemisphere light for natural outdoor lighting
+            const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x228B22, 0.5);
+            scene.add(hemisphereLight);
+            
+            // Add some point lights inside the turbine house
+            const interiorLight1 = new THREE.PointLight(0xfff4e5, 0.8, 10);
+            interiorLight1.position.set(-3, 0, 3);
+            scene.add(interiorLight1);
+            
+            const interiorLight2 = new THREE.PointLight(0xfff4e5, 0.8, 10);
+            interiorLight2.position.set(3, 0, 3);
+            scene.add(interiorLight2);
+        }
+        
+        function createEnvironment() {
+            // Create terrain with more natural variation
+            const groundSize = 200;
+            const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 100, 100);
+            
+            // Displace vertices to create terrain
             const vertices = groundGeometry.attributes.position.array;
             for (let i = 0; i < vertices.length; i += 3) {
-                // Skip the area near the dam
                 const x = vertices[i];
                 const z = vertices[i + 2];
-                const distance = Math.sqrt(x * x + z * z);
+                const distanceToCenter = Math.sqrt(x * x + z * z);
                 
-                if (distance > 30) {
-                    vertices[i + 1] = Math.sin(x / 20) * Math.cos(z / 20) * 2;
+                if (distanceToCenter > 30) {
+                    // Create more natural terrain with Perlin-like noise
+                    vertices[i + 1] = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 3 +
+                                     Math.sin(x * 0.05) * Math.cos(z * 0.05) * 6;
                 }
             }
             
+            // Calculate normals for proper lighting
+            groundGeometry.computeVertexNormals();
+            
             const groundMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x228B22,
-                roughness: 0.8,
-                metalness: 0.1,
-                flatShading: true
+                color: 0x3a5f0b,
+                roughness: 0.9,
+                metalness: 0.0
             });
             
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
@@ -227,292 +313,351 @@
             ground.receiveShadow = true;
             scene.add(ground);
             
-            // Add water at the bottom
-            const bottomWaterGeometry = new THREE.PlaneGeometry(groundSize, groundSize/2);
-            const bottomWaterMaterial = new THREE.MeshStandardMaterial({ 
+            // Create downstream river
+            const riverGeometry = new THREE.PlaneGeometry(groundSize, 30, 32, 32);
+            riverGeometry.rotateX(-Math.PI / 2);
+            
+            const riverMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x0077be,
                 transparent: true,
                 opacity: 0.8,
-                roughness: 0.2,
-                metalness: 0.1
+                roughness: 0.1,
+                metalness: 0.3
             });
             
-            const bottomWater = new THREE.Mesh(bottomWaterGeometry, bottomWaterMaterial);
-            bottomWater.rotation.x = -Math.PI / 2;
-            bottomWater.position.set(0, -4.9, 50);
-            scene.add(bottomWater);
+            const river = new THREE.Mesh(riverGeometry, riverMaterial);
+            river.position.set(0, -4.9, 50);
+            river.receiveShadow = true;
+            scene.add(river);
             
-            // Add some mountains in the background
+            // Add mountains in the background
+            createMountains();
+            
+            // Add vegetation (trees, bushes)
+            createVegetation();
+        }
+        
+        function createMountains() {
             const mountainMaterial = new THREE.MeshStandardMaterial({
-                color: 0x4b6455,
-                roughness: 1,
-                metalness: 0
+                color: 0x5a5a5a,
+                roughness: 1.0,
+                metalness: 0.0
             });
             
-            for (let i = 0; i < 5; i++) {
-                const mountainGeometry = new THREE.ConeGeometry(15 + Math.random() * 10, 20 + Math.random() * 30, 5);
+            // Create several mountains with varying sizes
+            for (let i = 0; i < 8; i++) {
+                const segments = Math.floor(5 + Math.random() * 5);
+                const radius = 15 + Math.random() * 15;
+                const height = 20 + Math.random() * 30;
+                
+                const mountainGeometry = new THREE.ConeGeometry(radius, height, segments);
                 const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
-                const angle = i * Math.PI / 2.5;
-                const distance = 80 + Math.random() * 20;
+                
+                // Position mountains in a circle around the scene
+                const angle = (i / 8) * Math.PI * 2;
+                const distance = 80 + Math.random() * 40;
                 mountain.position.set(
                     Math.sin(angle) * distance,
-                    -5 + mountain.geometry.parameters.height / 2,
-                    -Math.cos(angle) * distance
+                    -5 + height / 2,
+                    Math.cos(angle) * distance
                 );
+                
+                // Random rotation for more natural look
+                mountain.rotation.y = Math.random() * Math.PI * 2;
+                
                 mountain.castShadow = true;
                 mountain.receiveShadow = true;
                 scene.add(mountain);
             }
-            
-            // Add some trees
-            const treeMaterial = new THREE.MeshStandardMaterial({
-                color: 0x0d5c0d,
+        }
+        
+        function createVegetation() {
+            // Tree materials
+            const leafMaterial = new THREE.MeshStandardMaterial({
+                color: 0x1a5f1a,
                 roughness: 0.9
             });
             
             const trunkMaterial = new THREE.MeshStandardMaterial({
-                color: 0x8B4513,
+                color: 0x5a3a1a,
                 roughness: 0.8
             });
             
-            for (let i = 0; i < 30; i++) {
-                const treeGroup = new THREE.Group();
+            // Create multiple trees
+            for (let i = 0; i < 50; i++) {
+                const tree = new THREE.Group();
                 
                 // Trunk
-                const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, 2, 8);
+                const trunkHeight = 2 + Math.random() * 1;
+                const trunkRadius = 0.3 + Math.random() * 0.2;
+                const trunkGeometry = new THREE.CylinderGeometry(
+                    trunkRadius * 0.8, trunkRadius, trunkHeight, 8
+                );
                 const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-                trunk.position.y = 1;
+                trunk.position.y = trunkHeight / 2;
                 trunk.castShadow = true;
-                treeGroup.add(trunk);
+                tree.add(trunk);
                 
-                // Tree top (cone)
-                const treeTopGeometry = new THREE.ConeGeometry(2, 5, 8);
-                const treeTop = new THREE.Mesh(treeTopGeometry, treeMaterial);
-                treeTop.position.y = 4.5;
-                treeTop.castShadow = true;
-                treeGroup.add(treeTop);
+                // Leaves (multiple layers for more realistic trees)
+                const leavesLayers = 2 + Math.floor(Math.random() * 2);
+                for (let j = 0; j < leavesLayers; j++) {
+                    const leavesRadius = 1.5 + Math.random() * 1;
+                    const leavesHeight = 2 + Math.random() * 1;
+                    const leavesGeometry = new THREE.ConeGeometry(
+                        leavesRadius, leavesHeight, 8
+                    );
+                    const leaves = new THREE.Mesh(leavesGeometry, leafMaterial);
+                    leaves.position.y = trunkHeight + (j * leavesHeight * 0.7);
+                    leaves.castShadow = true;
+                    tree.add(leaves);
+                }
                 
-                // Position the tree randomly, avoiding the dam area
+                // Position tree randomly, avoiding the dam area
                 let x, z;
                 do {
                     const angle = Math.random() * Math.PI * 2;
-                    const distance = 25 + Math.random() * 70;
+                    const distance = 30 + Math.random() * 100;
                     x = Math.sin(angle) * distance;
                     z = Math.cos(angle) * distance;
-                } while (Math.abs(x) < 20 && z > -30 && z < 15);
+                } while (Math.abs(x) < 25 && z > -40 && z < 20);
                 
-                treeGroup.position.set(x, -5, z);
-                scene.add(treeGroup);
+                tree.position.set(x, -5, z);
+                
+                // Random scale variation
+                const scale = 0.7 + Math.random() * 0.6;
+                tree.scale.set(scale, scale, scale);
+                
+                // Slight random rotation
+                tree.rotation.y = Math.random() * Math.PI * 2;
+                
+                scene.add(tree);
             }
         }
-        
         function createDam() {
-            // Create concrete texture for dam
-            const concreteTexture = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/brick_bump.jpg');
+            // Load concrete texture
+            const concreteTexture = new THREE.TextureLoader().load(
+                'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/brick_diffuse.jpg'
+            );
             concreteTexture.wrapS = concreteTexture.wrapT = THREE.RepeatWrapping;
-            concreteTexture.repeat.set(2, 2);
+            concreteTexture.repeat.set(4, 4);
             
-            // Main dam wall with texture
-            const damGeometry = new THREE.BoxGeometry(20, 15, 3);
+            const concreteBumpMap = new THREE.TextureLoader().load(
+                'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/brick_bump.jpg'
+            );
+            concreteBumpMap.wrapS = concreteBumpMap.wrapT = THREE.RepeatWrapping;
+            concreteBumpMap.repeat.set(4, 4);
+            
+            // Main dam wall
+            const damGeometry = new THREE.BoxGeometry(25, 18, 4);
             const damMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xB0B0B0,
+                color: 0x909090,
                 roughness: 0.7,
                 metalness: 0.1,
-                bumpMap: concreteTexture,
+                map: concreteTexture,
+                bumpMap: concreteBumpMap,
                 bumpScale: 0.1
             });
+            
             const dam = new THREE.Mesh(damGeometry, damMaterial);
-            dam.position.set(0, 0, -5);
+            dam.position.set(0, 1, -5);
             dam.castShadow = true;
             dam.receiveShadow = true;
             scene.add(dam);
             
-            // Add details to the dam for more realism
-            // Buttresses
-            const buttressMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xA0A0A0,
-                roughness: 0.7,
-                metalness: 0.1,
-                bumpMap: concreteTexture,
-                bumpScale: 0.05
-            });
+            // Add structural supports
+            createDamSupports();
             
-            for (let i = -1; i <= 1; i += 2) {
-                const buttressGeometry = new THREE.BoxGeometry(1, 12, 6);
-                const buttress = new THREE.Mesh(buttressGeometry, buttressMaterial);
-                buttress.position.set(i * 9, -1.5, -3);
-                buttress.castShadow = true;
-                buttress.receiveShadow = true;
-                scene.add(buttress);
-            }
+            // Dam top structure
+            createDamTopStructure();
             
-            // Dam top
-            const damTopGeometry = new THREE.BoxGeometry(22, 1, 5);
-            const damTopMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x606060,
-                roughness: 0.6,
-                metalness: 0.2,
-                bumpMap: concreteTexture,
-                bumpScale: 0.05
-            });
-            const damTop = new THREE.Mesh(damTopGeometry, damTopMaterial);
-            damTop.position.set(0, 7.5, -5);
-            damTop.receiveShadow = true;
-            scene.add(damTop);
-            
-            // Dam top railing
-            const railingMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x505050,
-                roughness: 0.5,
-                metalness: 0.8
-            });
-            
-            for (let i = -10; i <= 10; i += 2) {
-                const postGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
-                const post = new THREE.Mesh(postGeometry, railingMaterial);
-                post.position.set(i, 8.5, -5);
-                scene.add(post);
-            }
-            
-            // Horizontal railings
-            const railGeometry = new THREE.CylinderGeometry(0.05, 0.05, 22, 8);
-            railGeometry.rotateZ(Math.PI / 2);
-            const rail = new THREE.Mesh(railGeometry, railingMaterial);
-            rail.position.set(0, 8.7, -5);
-            scene.add(rail);
-            
-            const rail2 = new THREE.Mesh(railGeometry, railingMaterial);
-            rail2.position.set(0, 8.3, -5);
-            scene.add(rail2);
-            
-            // Gate opening in the middle
-            const gateOpeningGeometry = new THREE.BoxGeometry(6, 5, 4);
+            // Gate opening
+            const gateOpeningGeometry = new THREE.BoxGeometry(8, 6, 5);
             const gateOpeningMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x000000,
                 roughness: 1,
                 metalness: 0 
             });
             const gateOpening = new THREE.Mesh(gateOpeningGeometry, gateOpeningMaterial);
-            gateOpening.position.set(0, -2.5, -3.5);
+            gateOpening.position.set(0, -3, -3.5);
             scene.add(gateOpening);
         }
         
+        function createDamSupports() {
+            const supportMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x707070,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            
+            // Buttresses
+            for (let i = -1; i <= 1; i += 2) {
+                const buttressGeometry = new THREE.BoxGeometry(2, 15, 8);
+                const buttress = new THREE.Mesh(buttressGeometry, supportMaterial);
+                buttress.position.set(i * 11, -1.5, -3);
+                buttress.castShadow = true;
+                buttress.receiveShadow = true;
+                scene.add(buttress);
+            }
+            
+            // Diagonal supports
+            for (let i = -1; i <= 1; i += 2) {
+                const supportGeometry = new THREE.BoxGeometry(1, 1, 15);
+                const support = new THREE.Mesh(supportGeometry, supportMaterial);
+                support.position.set(i * 8, 5, -12);
+                support.rotation.x = Math.PI / 6 * i;
+                support.castShadow = true;
+                support.receiveShadow = true;
+                scene.add(support);
+            }
+        }
+        
+        function createDamTopStructure() {
+            const topMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x606060,
+                roughness: 0.6,
+                metalness: 0.2
+            });
+            
+            // Dam top walkway
+            const walkwayGeometry = new THREE.BoxGeometry(27, 1, 6);
+            const walkway = new THREE.Mesh(walkwayGeometry, topMaterial);
+            walkway.position.set(0, 9, -5);
+            walkway.receiveShadow = true;
+            scene.add(walkway);
+            
+            // Railings
+            const railingMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x404040,
+                roughness: 0.5,
+                metalness: 0.8
+            });
+            
+            // Vertical posts
+            for (let i = -12; i <= 12; i += 2) {
+                const postGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8);
+                const post = new THREE.Mesh(postGeometry, railingMaterial);
+                post.position.set(i, 9.8, -5);
+                scene.add(post);
+            }
+            
+            // Horizontal rails
+            const railGeometry = new THREE.CylinderGeometry(0.06, 0.06, 27, 8);
+            railGeometry.rotateZ(Math.PI / 2);
+            
+            for (let i = 0; i < 2; i++) {
+                const rail = new THREE.Mesh(railGeometry, railingMaterial);
+                rail.position.set(0, 9.5 + i * 0.3, -5);
+                scene.add(rail);
+            }
+            
+            // Side rails
+            const sideRailGeometry = new THREE.CylinderGeometry(0.06, 0.06, 6, 8);
+            sideRailGeometry.rotateX(Math.PI / 2);
+            
+            for (let i = -1; i <= 1; i += 2) {
+                const sideRail = new THREE.Mesh(sideRailGeometry, railingMaterial);
+                sideRail.position.set(i * 13.5, 9.7, -5);
+                scene.add(sideRail);
+            }
+        }
+        
         function createReservoir() {
-            // Water in reservoir with animated waves
-            const waterGeometry = new THREE.PlaneGeometry(30, 20, 32, 32);
+            // Water surface with waves
+            const waterGeometry = new THREE.PlaneGeometry(40, 25, 64, 64);
             waterGeometry.rotateX(-Math.PI / 2);
             
-            // Create custom shader material for more realistic water
             const waterMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x0077be,
                 transparent: true,
-                opacity: 0.8,
-                roughness: 0.2,
+                opacity: 0.85,
+                roughness: 0.1,
                 metalness: 0.3,
                 side: THREE.DoubleSide
             });
             
-            water = new THREE.Mesh(waterGeometry, waterMaterial);
-            water.position.set(0, 5, -15);
-            water.userData = {
+            waterSurface = new THREE.Mesh(waterGeometry, waterMaterial);
+            waterSurface.position.set(0, 7, -15);
+            waterSurface.userData = {
                 originalVertices: Array.from(waterGeometry.attributes.position.array),
                 time: 0
             };
-            scene.add(water);
+            scene.add(waterSurface);
             
-            // Add a subtle light effect under the water for more realism
-            const waterLight = new THREE.PointLight(0x0077be, 0.5, 30);
-            waterLight.position.set(0, 0, -15);
-            scene.add(waterLight);
-            
-            // Reservoir walls with texture
-            const wallTexture = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/stone.jpg');
-            wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
-            wallTexture.repeat.set(5, 2);
-            
+            // Reservoir walls
             const wallMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x808080,
                 roughness: 0.7,
-                metalness: 0.1,
-                map: wallTexture,
-                bumpMap: wallTexture,
-                bumpScale: 0.2
+                metalness: 0.1
             });
             
             // Left wall
-            const leftWallGeometry = new THREE.BoxGeometry(1, 15, 20);
+            const leftWallGeometry = new THREE.BoxGeometry(1, 18, 25);
             const leftWall = new THREE.Mesh(leftWallGeometry, wallMaterial);
-            leftWall.position.set(-15.5, 0, -15);
+            leftWall.position.set(-20.5, 1, -15);
             leftWall.receiveShadow = true;
             leftWall.castShadow = true;
             scene.add(leftWall);
             
             // Right wall
-            const rightWallGeometry = new THREE.BoxGeometry(1, 15, 20);
+            const rightWallGeometry = new THREE.BoxGeometry(1, 18, 25);
             const rightWall = new THREE.Mesh(rightWallGeometry, wallMaterial);
-            rightWall.position.set(15.5, 0, -15);
+            rightWall.position.set(20.5, 1, -15);
             rightWall.receiveShadow = true;
             rightWall.castShadow = true;
             scene.add(rightWall);
             
             // Back wall
-            const backWallGeometry = new THREE.BoxGeometry(32, 15, 1);
+            const backWallGeometry = new THREE.BoxGeometry(42, 18, 1);
             const backWall = new THREE.Mesh(backWallGeometry, wallMaterial);
-            backWall.position.set(0, 0, -25.5);
+            backWall.position.set(0, 1, -27.5);
             backWall.receiveShadow = true;
             backWall.castShadow = true;
             scene.add(backWall);
         }
         
         function createGates() {
-            // Metal texture for gates
-            const metalTexture = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/metal.jpg');
-            
             const gateMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x505050,
-                roughness: 0.4,
-                metalness: 0.8,
-                map: metalTexture,
-                bumpMap: metalTexture,
-                bumpScale: 0.1
+                roughness: 0.3,
+                metalness: 0.8
             });
             
             // Left gate
-            const gateGeometry = new THREE.BoxGeometry(3, 5, 0.5);
+            const gateGeometry = new THREE.BoxGeometry(4, 6, 0.5);
             gateLeft = new THREE.Mesh(gateGeometry, gateMaterial);
-            gateLeft.position.set(-1.5, -2.5, -3.5);
+            gateLeft.position.set(-2, -3, -3.5);
             gateLeft.castShadow = true;
             scene.add(gateLeft);
             
             // Right gate
             gateRight = new THREE.Mesh(gateGeometry, gateMaterial);
-            gateRight.position.set(1.5, -2.5, -3.5);
+            gateRight.position.set(2, -3, -3.5);
             gateRight.castShadow = true;
             scene.add(gateRight);
             
-            // Add gate details
-            // Gate handles
-            const handleMaterial = new THREE.MeshStandardMaterial({
+            // Add gate details (handles, reinforcement)
+            const detailMaterial = new THREE.MeshStandardMaterial({
                 color: 0x303030,
-                roughness: 0.4,
+                roughness: 0.3,
                 metalness: 0.9
             });
             
             for (let j = 0; j < 2; j++) {
                 const gate = j === 0 ? gateLeft : gateRight;
                 
+                // Handles
                 for (let i = -1; i <= 1; i += 2) {
-                    const handleGeometry = new THREE.TorusGeometry(0.3, 0.05, 16, 16);
-                    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-                    handle.position.set(j === 0 ? -0.5 : 0.5, i, -3.2);
+                    const handleGeometry = new THREE.TorusGeometry(0.4, 0.08, 16, 16);
+                    const handle = new THREE.Mesh(handleGeometry, detailMaterial);
+                    handle.position.set(j === 0 ? -0.8 : 0.8, i * 1.5, -3.2);
                     handle.rotation.y = Math.PI / 2;
                     gate.add(handle);
                 }
                 
-                // Add reinforcement bars
-                for (let i = -1.5; i <= 1.5; i += 1) {
-                    const barGeometry = new THREE.BoxGeometry(2.5, 0.2, 0.1);
-                    const bar = new THREE.Mesh(barGeometry, handleMaterial);
+                // Reinforcement bars
+                for (let i = -2; i <= 2; i += 1) {
+                    const barGeometry = new THREE.BoxGeometry(3.5, 0.3, 0.1);
+                    const bar = new THREE.Mesh(barGeometry, detailMaterial);
                     bar.position.set(0, i, -0.2);
                     gate.add(bar);
                 }
@@ -520,48 +665,54 @@
         }
         
         function createTurbineHouse() {
-            // Brick texture for the turbine house
-            const brickTexture = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/brick_diffuse.jpg');
-            brickTexture.wrapS = brickTexture.wrapT = THREE.RepeatWrapping;
-            brickTexture.repeat.set(2, 2);
-            
-            const brickBumpMap = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/brick_bump.jpg');
-            brickBumpMap.wrapS = brickBumpMap.wrapT = THREE.RepeatWrapping;
-            brickBumpMap.repeat.set(2, 2);
-            
-            // Turbine house
-            const houseGeometry = new THREE.BoxGeometry(10, 8, 8);
+            // Main house structure
+            const houseGeometry = new THREE.BoxGeometry(12, 10, 10);
             const houseMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0xeeeeee,
                 roughness: 0.7,
-                metalness: 0.1,
-                map: brickTexture,
-                bumpMap: brickBumpMap,
-                bumpScale: 0.1
+                metalness: 0.1
             });
+            
             const house = new THREE.Mesh(houseGeometry, houseMaterial);
-            house.position.set(0, -1, 3);
+            house.position.set(0, 0, 3);
             house.castShadow = true;
             house.receiveShadow = true;
             scene.add(house);
             
-            // Roof texture
-            const roofTexture = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/wood.jpg');
-            
             // Roof
-            const roofGeometry = new THREE.ConeGeometry(7.5, 3, 4);
+            const roofGeometry = new THREE.ConeGeometry(8, 4, 4);
             const roofMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x8B4513,
-                roughness: 0.7,
-                map: roofTexture
+                roughness: 0.7
             });
             const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-            roof.position.set(0, 4, 3);
+            roof.position.set(0, 6, 3);
             roof.rotation.y = Math.PI / 4;
             roof.castShadow = true;
             scene.add(roof);
             
-            // Add windows
+            // Windows
+            createHouseWindows();
+            
+            // Door
+            createHouseDoor();
+            
+            // Water channel
+            const channelGeometry = new THREE.BoxGeometry(8, 3, 12);
+            const channelMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x707070,
+                roughness: 0.7
+            });
+            const channel = new THREE.Mesh(channelGeometry, channelMaterial);
+            channel.position.set(0, -3.5, -2);
+            channel.receiveShadow = true;
+            scene.add(channel);
+            
+            // Pipes
+            createPipes();
+        }
+        
+        function createHouseWindows() {
             const windowMaterial = new THREE.MeshStandardMaterial({
                 color: 0x88ccff,
                 transparent: true,
@@ -571,77 +722,75 @@
                 emissive: 0x112233
             });
             
-            const windowFrameMaterial = new THREE.MeshStandardMaterial({
+            const frameMaterial = new THREE.MeshStandardMaterial({
                 color: 0x704214,
                 roughness: 0.7,
                 metalness: 0.1
             });
             
-            // Add windows to the turbine house
-            for (let i = -1; i <= 1; i += 2) {
-                // Front window
+            // Window creation helper function
+            const createWindow = (width, height) => {
                 const windowGroup = new THREE.Group();
                 
-                const windowGeometry = new THREE.PlaneGeometry(2, 2);
-                const window1 = new THREE.Mesh(windowGeometry, windowMaterial);
-                window1.position.z = 0.01;
-                windowGroup.add(window1);
-                
-                // Window frame
-                const frameGeometry1 = new THREE.BoxGeometry(2.2, 0.2, 0.2);
-                const frameTop = new THREE.Mesh(frameGeometry1, windowFrameMaterial);
-                frameTop.position.y = 1.1;
-                windowGroup.add(frameTop);
-                
-                const frameBottom = new THREE.Mesh(frameGeometry1, windowFrameMaterial);
-                frameBottom.position.y = -1.1;
-                windowGroup.add(frameBottom);
-                
-                const frameGeometry2 = new THREE.BoxGeometry(0.2, 2.4, 0.2);
-                const frameLeft = new THREE.Mesh(frameGeometry2, windowFrameMaterial);
-                frameLeft.position.x = -1.1;
-                windowGroup.add(frameLeft);
-                
-                const frameRight = new THREE.Mesh(frameGeometry2, windowFrameMaterial);
-                frameRight.position.x = 1.1;
-                windowGroup.add(frameRight);
-                
-                // Center divider
-                const dividerH = new THREE.Mesh(
-                    new THREE.BoxGeometry(2, 0.1, 0.1),
-                    windowFrameMaterial
+                // Glass
+                const glass = new THREE.Mesh(
+                    new THREE.PlaneGeometry(width, height),
+                    windowMaterial
                 );
-                windowGroup.add(dividerH);
+                glass.position.z = 0.01;
+                windowGroup.add(glass);
                 
-                const dividerV = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.1, 2, 0.1),
-                    windowFrameMaterial
+                // Frame
+                const frameHorizontal = new THREE.Mesh(
+                    new THREE.BoxGeometry(width + 0.2, 0.2, 0.2),
+                    frameMaterial
                 );
-                windowGroup.add(dividerV);
+                frameHorizontal.position.y = height / 2 + 0.1;
+                windowGroup.add(frameHorizontal.clone());
+                frameHorizontal.position.y = -height / 2 - 0.1;
+                windowGroup.add(frameHorizontal.clone());
                 
-                windowGroup.position.set(i * 3, 0, 7.01);
-                scene.add(windowGroup);
+                const frameVertical = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.2, height + 0.2, 0.2),
+                    frameMaterial
+                );
+                frameVertical.position.x = width / 2 + 0.1;
+                windowGroup.add(frameVertical.clone());
+                frameVertical.position.x = -width / 2 - 0.1;
+                windowGroup.add(frameVertical.clone());
                 
-                // Side windows
-                const sideWindowGroup = windowGroup.clone();
-                sideWindowGroup.rotation.y = Math.PI / 2;
-                sideWindowGroup.position.set(5.01, 0, 3 + i * 2);
-                scene.add(sideWindowGroup);
-                
-                const sideWindowGroup2 = windowGroup.clone();
-                sideWindowGroup2.rotation.y = -Math.PI / 2;
-                sideWindowGroup2.position.set(-5.01, 0, 3 + i * 2);
-                scene.add(sideWindowGroup2);
-            }
+                return windowGroup;
+            };
             
-            // Add a door
+            // Front windows
+            const frontWindow1 = createWindow(2, 2);
+            frontWindow1.position.set(-4, 1, 10.01);
+            scene.add(frontWindow1);
+            
+            const frontWindow2 = createWindow(2, 2);
+            frontWindow2.position.set(4, 1, 10.01);
+            scene.add(frontWindow2);
+            
+            // Side windows
+            const sideWindow1 = createWindow(2, 2);
+            sideWindow1.position.set(-10.01, 1, 0);
+            sideWindow1.rotation.y = Math.PI / 2;
+            scene.add(sideWindow1);
+            
+            const sideWindow2 = createWindow(2, 2);
+            sideWindow2.position.set(10.01, 1, 0);
+            sideWindow2.rotation.y = -Math.PI / 2;
+            scene.add(sideWindow2);
+        }
+        
+        function createHouseDoor() {
             const doorGroup = new THREE.Group();
             
+            // Door
             const doorGeometry = new THREE.PlaneGeometry(2, 3);
             const doorMaterial = new THREE.MeshStandardMaterial({
                 color: 0x5c2e11,
-                roughness: 0.7,
-                map: roofTexture
+                roughness: 0.7
             });
             const door = new THREE.Mesh(doorGeometry, doorMaterial);
             door.position.z = 0.01;
@@ -654,30 +803,14 @@
                 roughness: 0.4,
                 metalness: 0.8
             }));
-            handle.position.set(0.6, -0.3, 0.1);
+            handle.position.set(0.8, 0, 0.1);
             doorGroup.add(handle);
             
-            doorGroup.position.set(0, -2.5, 7.01);
+            doorGroup.position.set(0, -2, 10.01);
             scene.add(doorGroup);
-            
-            // Water channel with realistic material
-            const concreteTexture = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/textures/brick_bump.jpg');
-            concreteTexture.wrapS = concreteTexture.wrapT = THREE.RepeatWrapping;
-            concreteTexture.repeat.set(3, 1);
-            
-            const channelGeometry = new THREE.BoxGeometry(6, 2, 10);
-            const channelMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x808080,
-                roughness: 0.7,
-                bumpMap: concreteTexture,
-                bumpScale: 0.05
-            });
-            const channel = new THREE.Mesh(channelGeometry, channelMaterial);
-            channel.position.set(0, -4, -2);
-            channel.receiveShadow = true;
-            scene.add(channel);
-            
-            // Add some pipes around the turbine house
+        }
+        
+        function createPipes() {
             const pipeMaterial = new THREE.MeshStandardMaterial({
                 color: 0x505050,
                 roughness: 0.3,
@@ -685,7 +818,7 @@
             });
             
             // Main pipe from dam to turbine
-            const mainPipeGeometry = new THREE.CylinderGeometry(1, 1, 10, 16);
+            const mainPipeGeometry = new THREE.CylinderGeometry(1.2, 1.2, 12, 32);
             mainPipeGeometry.rotateX(Math.PI / 2);
             const mainPipe = new THREE.Mesh(mainPipeGeometry, pipeMaterial);
             mainPipe.position.set(0, -3, -1);
@@ -693,59 +826,108 @@
             scene.add(mainPipe);
             
             // Smaller pipes
-            const smallPipeGeometry = new THREE.CylinderGeometry(0.3, 0.3, 6, 16);
+            const smallPipeGeometry = new THREE.CylinderGeometry(0.5, 0.5, 8, 32);
             for (let i = -1; i <= 1; i += 2) {
                 const smallPipe = new THREE.Mesh(smallPipeGeometry, pipeMaterial);
-                smallPipe.position.set(i * 2, -3, -1);
+                smallPipe.position.set(i * 3, -3, -1);
                 smallPipe.castShadow = true;
                 scene.add(smallPipe);
             }
         }
         
-        function createTurbine() {
+        function createTurbineAndGenerator() {
             // Turbine blades
-            const bladeGeometry = new THREE.BoxGeometry(0.5, 4, 0.1);
+            const bladeGeometry = new THREE.BoxGeometry(0.6, 5, 0.2);
             const bladeMaterial = new THREE.MeshStandardMaterial({
-                color: 0x505050,
-                roughness: 0.4,
+                color: 0x606060,
+                roughness: 0.3,
                 metalness: 0.8
             });
             
             turbine = new THREE.Group();
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 6; i++) {
                 const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
-                blade.position.set(0, 2, 0);
-                blade.rotation.z = i * Math.PI / 2;
+                blade.position.set(0, 2.5, 0);
+                blade.rotation.z = (i / 6) * Math.PI * 2;
                 turbine.add(blade);
             }
+            
+            // Turbine hub
+            const hubGeometry = new THREE.CylinderGeometry(1, 1, 0.5, 32);
+            const hubMaterial = new THREE.MeshStandardMaterial({
+                color: 0x404040,
+                roughness: 0.2,
+                metalness: 0.9
+            });
+            const hub = new THREE.Mesh(hubGeometry, hubMaterial);
+            turbine.add(hub);
             
             turbine.position.set(0, -3, 0);
             turbine.castShadow = true;
             scene.add(turbine);
+            
+            // Generator housing
+            const generatorGeometry = new THREE.CylinderGeometry(2, 2, 3, 32);
+            const generatorMaterial = new THREE.MeshStandardMaterial({
+                color: 0x707070,
+                roughness: 0.4,
+                metalness: 0.7
+            });
+            generator = new THREE.Mesh(generatorGeometry, generatorMaterial);
+            generator.position.set(0, -3, 3);
+            generator.rotation.x = Math.PI / 2;
+            generator.castShadow = true;
+            scene.add(generator);
+            
+            // Generator details
+            const detailGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const detail = new THREE.Mesh(detailGeometry, generatorMaterial);
+                detail.position.set(
+                    Math.cos(angle) * 2.5,
+                    -3,
+                    3 + Math.sin(angle) * 2.5
+                );
+                scene.add(detail);
+            }
         }
         
         function createBulbAndLight() {
-            // Bulb
-            const bulbGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            // Bulb glass
+            const bulbGeometry = new THREE.SphereGeometry(0.8, 32, 32);
             const bulbMaterial = new THREE.MeshStandardMaterial({
-                color: 0xffff00,
+                color: 0xffffcc,
                 emissive: 0xffff00,
-                emissiveIntensity: 1,
-                roughness: 0.4,
-                metalness: 0.8
+                emissiveIntensity: 0,
+                roughness: 0.1,
+                metalness: 0.0,
+                transparent: true,
+                opacity: 0.9
             });
             
             bulb = new THREE.Mesh(bulbGeometry, bulbMaterial);
-            bulb.position.set(0, 5, 3);
+            bulb.position.set(0, 6, 3);
             scene.add(bulb);
             
-            // Light
-            light = new THREE.PointLight(0xffff00, 1, 10);
-            light.position.set(0, 5, 3);
+            // Light source
+            light = new THREE.PointLight(0xffff00, 0, 15, 2);
+            light.position.set(0, 6, 3);
             scene.add(light);
+            
+            // Bulb base
+            const baseGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.5, 32);
+            const baseMaterial = new THREE.MeshStandardMaterial({
+                color: 0x303030,
+                roughness: 0.4,
+                metalness: 0.8
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.set(0, 5.2, 3);
+            scene.add(base);
         }
         
-        function createPowerLines() {
+        function createPowerInfrastructure() {
             // Power lines
             const poleMaterial = new THREE.MeshStandardMaterial({
                 color: 0x8B4513,
@@ -754,50 +936,117 @@
             });
             
             const wireMaterial = new THREE.LineBasicMaterial({
-                color: 0x000000
+                color: 0x000000,
+                linewidth: 2
             });
             
-            for (let i = 0; i < 5; i++) {
-                const poleGeometry = new THREE.CylinderGeometry(0.2, 0.2, 10, 16);
+            // Create power poles and wires
+            for (let i = 0; i < 6; i++) {
+                const poleGeometry = new THREE.CylinderGeometry(0.3, 0.3, 12, 16);
                 const pole = new THREE.Mesh(poleGeometry, poleMaterial);
-                pole.position.set(i * 10 - 20, 0, 10);
+                pole.position.set(i * 15 - 30, 0, 15);
                 scene.add(pole);
                 
+                // Cross arms
+                const crossArmGeometry = new THREE.BoxGeometry(4, 0.2, 0.2);
+                const crossArm = new THREE.Mesh(crossArmGeometry, poleMaterial);
+                crossArm.position.set(i * 15 - 30, 6, 15);
+                scene.add(crossArm);
+                
+                // Wires
                 if (i > 0) {
-                    const wireGeometry = new THREE.BufferGeometry().setFromPoints([
-                        new THREE.Vector3((i - 1) * 10 - 20, 5, 10),
-                        new THREE.Vector3(i * 10 - 20, 5, 10)
-                    ]);
-                    const wire = new THREE.Line(wireGeometry, wireMaterial);
-                    scene.add(wire);
+                    for (let j = -1; j <= 1; j++) {
+                        const wireGeometry = new THREE.BufferGeometry().setFromPoints([
+                            new THREE.Vector3((i - 1) * 15 - 30, 6 + j, 15),
+                            new THREE.Vector3(i * 15 - 30, 6 + j, 15)
+                        ]);
+                        const wire = new THREE.Line(wireGeometry, wireMaterial);
+                        scene.add(wire);
+                    }
                 }
             }
+            
+            // Transformer
+            const transformerGeometry = new THREE.BoxGeometry(3, 4, 2);
+            const transformerMaterial = new THREE.MeshStandardMaterial({
+                color: 0x404040,
+                roughness: 0.5,
+                metalness: 0.7
+            });
+            const transformer = new THREE.Mesh(transformerGeometry, transformerMaterial);
+            transformer.position.set(-10, 2, 15);
+            scene.add(transformer);
+            
+            // Connection from generator to transformer
+            const connectionGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, -3, 3),
+                new THREE.Vector3(-5, -3, 10),
+                new THREE.Vector3(-10, 4, 15)
+            ]);
+            const connection = new THREE.Line(
+                connectionGeometry,
+                new THREE.LineBasicMaterial({ color: 0xff0000 })
+            );
+            scene.add(connection);
         }
         
         function createWaterfall() {
-            // Waterfall
-            const waterfallGeometry = new THREE.PlaneGeometry(6, 10);
+            // Waterfall effect
+            const waterfallGeometry = new THREE.PlaneGeometry(8, 12, 8, 16);
             const waterfallMaterial = new THREE.MeshStandardMaterial({
-                color: 0x0077be,
+                color: 0x00aaff,
                 transparent: true,
-                opacity: 0.8,
-                roughness: 0.2,
+                opacity: 0.7,
+                roughness: 0.1,
                 metalness: 0.3,
                 side: THREE.DoubleSide
             });
             
             waterfall = new THREE.Mesh(waterfallGeometry, waterfallMaterial);
-            waterfall.position.set(0, -5, -3.5);
+            waterfall.position.set(0, -6, -3.5);
             waterfall.rotation.x = -Math.PI / 2;
             waterfall.visible = false;
+            waterfall.userData = {
+                originalVertices: Array.from(waterfallGeometry.attributes.position.array),
+                time: 0
+            };
             scene.add(waterfall);
         }
         
+        function setupEventListeners() {
+            // Gate control
+            document.getElementById('gate-control').addEventListener('input', function(e) {
+                gateOpeningPercentage = parseInt(e.target.value);
+                document.getElementById('gate-value').textContent = gateOpeningPercentage + '%';
+                updateGatePosition();
+            });
+            
+            // Camera control
+            document.getElementById('camera-control').addEventListener('input', function(e) {
+                const viewIndex = parseInt(e.target.value) - 1;
+                document.getElementById('view-value').textContent = e.target.value;
+                
+                gsap.to(camera.position, {
+                    x: cameraPositions[viewIndex].x,
+                    y: cameraPositions[viewIndex].y,
+                    z: cameraPositions[viewIndex].z,
+                    duration: 1.5,
+                    onUpdate: function() {
+                        camera.lookAt(0, 0, 0);
+                    }
+                });
+            });
+            
+            // Window resize
+            window.addEventListener('resize', onWindowResize);
+        }
+        
         function updateGatePosition() {
-            const gatePosition = -2.5 + (gateOpeningPercentage / 100) * 5;
+            const gatePosition = -3 + (gateOpeningPercentage / 100) * 6;
             gateLeft.position.y = gatePosition;
             gateRight.position.y = gatePosition;
             
+            // Show/hide waterfall based on gate opening
             if (gateOpeningPercentage > 0) {
                 waterfall.visible = true;
             } else {
@@ -812,21 +1061,54 @@
             const deltaTime = (currentTime - previousTime) / 1000;
             previousTime = currentTime;
             
-            // Update turbine rotation
+            // Update controls if they're enabled
+            if (controls && loadingComplete) {
+                controls.update();
+            }
+            
+            // Update turbine rotation based on gate opening
             turbineRotationSpeed = gateOpeningPercentage / 100;
             turbine.rotation.z += turbineRotationSpeed * deltaTime * Math.PI;
             
-            // Update water animation
-            water.userData.time += deltaTime;
-            const vertices = water.geometry.attributes.position.array;
-            for (let i = 0; i < vertices.length; i += 3) {
-                vertices[i + 1] = water.userData.originalVertices[i + 1] + Math.sin(water.userData.time + vertices[i] * 0.1) * 0.2;
+            // Update water surface animation
+            if (waterSurface) {
+                waterSurface.userData.time += deltaTime;
+                const vertices = waterSurface.geometry.attributes.position.array;
+                for (let i = 0; i < vertices.length; i += 3) {
+                    vertices[i + 1] = waterSurface.userData.originalVertices[i + 1] + 
+                                     Math.sin(waterSurface.userData.time * 0.5 + vertices[i] * 0.1) * 0.3;
+                }
+                waterSurface.geometry.attributes.position.needsUpdate = true;
             }
-            water.geometry.attributes.position.needsUpdate = true;
             
-            // Update power output
-            powerOutput = turbineRotationSpeed * 100;
-            document.getElementById('powerOutput').textContent = `Power Output: ${powerOutput.toFixed(2)} kW`;
+            // Update waterfall animation
+            if (waterfall && waterfall.visible) {
+                waterfall.userData.time += deltaTime * 2;
+                const vertices = waterfall.geometry.attributes.position.array;
+                for (let i = 0; i < vertices.length; i += 3) {
+                    // Create flowing water effect
+                    vertices[i + 2] = waterfall.userData.originalVertices[i + 2] + 
+                                     Math.sin(waterfall.userData.time + vertices[i] * 0.5) * 0.5;
+                }
+                waterfall.geometry.attributes.position.needsUpdate = true;
+            }
+            
+            // Update power output and bulb brightness
+            powerOutput = turbineRotationSpeed * 150; // Scale to more realistic values
+            efficiency = Math.min(100, Math.round(powerOutput / 1.5)); // Efficiency percentage
+            
+            // Update bulb and light based on power output
+            const bulbIntensity = Math.min(1, turbineRotationSpeed * 2);
+            if (bulb) {
+                bulb.material.emissiveIntensity = bulbIntensity;
+            }
+            if (light) {
+                light.intensity = bulbIntensity;
+            }
+            
+            // Update display
+            document.getElementById('power-value').textContent = `${powerOutput.toFixed(1)} kW`;
+            document.getElementById('efficiency').textContent = `Efficiency: ${efficiency}%`;
             
             renderer.render(scene, camera);
         }
@@ -837,7 +1119,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
-        // Initialize the scene
+        // Start the simulation
         init();
     </script>
 </body>
